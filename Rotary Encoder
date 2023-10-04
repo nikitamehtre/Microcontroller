@@ -1,1 +1,109 @@
 
+#include <Arduino.h>
+
+#include "TeensyTimerTool.h"
+#include "QuadEncoder.h"
+
+
+#define outputA 2
+#define outputB 3
+
+// Encoder
+int counter = 0; 
+int aState;
+int aLastState;  
+String curDirection = "";
+
+const int LED = 13;
+
+uint32_t _mCurPosValue;
+uint32_t _old_position = 0;
+uint32_t _mCurPosValue1;
+uint32_t _old_position1 = 0;
+
+// Encoder possible Pins: 0,1,2,3,4,5,7,8,30,31,33; for T4.1 also 36 and 37
+const int ENCODER_A_PIN = 30; // on T41. left the 3rd from SC-Card side
+const int ENCODER_B_PIN = 31; // on T41. left the 2nd from SC-Card side
+
+using namespace TeensyTimerTool;
+QuadEncoder PositionEncoder(1, ENCODER_A_PIN, ENCODER_B_PIN, 1);  // Encoder on channel 1 of 4 available
+
+
+PeriodicTimer t1(TCK);  // Tick-Timer does not use any hardware timer (20 32bit channels) Tick-Timer
+PeriodicTimer t2(TMR1); // First channel on TMR1 aka QUAD timer module. (TMR1 - TMR4, four 16bit channels each) QUAD Timer
+PeriodicTimer t3(GPT1); // GPT1 module (one 32bit channel per module) GPT - General Purpose Timer
+OneShotTimer t4(TMR1);  // Second channel on TMR1
+
+long encoder_pulse_counter = 0;
+long direction = 1;
+
+
+void LED_ON()
+{
+    digitalWriteFast(LED, HIGH); 
+    t4.trigger(10'000);  // 10ms
+
+}
+
+void LED_OFF()
+{
+    digitalWriteFast(LED, LOW);
+}
+
+void setup() {
+  while(!Serial && millis() < 4000);
+  Serial.begin(9600);
+  t3.begin(LED_ON, 250'000); // 250ms
+  aLastState = digitalRead(outputA);  // initial state outputA
+
+  // Encoder inti
+  // PositionEncoder.setConfigInitialPosition();
+  PositionEncoder.setInitConfig();
+  PositionEncoder.EncConfig.positionInitialValue = 0;
+  PositionEncoder.init();
+  _mCurPosValue = PositionEncoder.read();
+  delay(5000);
+  Serial.printf("Start position value1: %ld\r\n", _mCurPosValue);
+
+  pinMode (outputA,INPUT);
+  pinMode (outputB,INPUT);
+
+
+  pinMode(ENCODER_A_PIN, INPUT_PULLUP);
+  pinMode(ENCODER_B_PIN, INPUT_PULLUP);
+}
+
+void loop() {
+ _mCurPosValue = PositionEncoder.read();
+  if(_mCurPosValue != _old_position){
+    Serial.printf("Current position value1: %ld\r\n", _mCurPosValue);
+    Serial.printf("Position differential value1: %d\r\n", (int16_t)PositionEncoder.getHoldDifference());
+    Serial.printf("Position HOLD revolution value1: %d\r\n", PositionEncoder.getHoldRevolution());
+    Serial.printf("Index Counter: %d\r\n", PositionEncoder.indexCounter);
+    Serial.println();
+  }
+  _old_position = _mCurPosValue; 
+
+aState = digitalRead(outputA); // current state outputA
+  if(aState != aLastState){  // previous and the current state of the outputA are different
+    if(digitalRead(outputB) != aState){
+      counter ++;
+      curDirection = "CLK";
+    }else{
+      counter --;
+      curDirection = "ANTICLK";
+    }
+    Serial.print("Position:  ");
+    Serial.print(counter);
+    Serial.print("| Direction: ");
+    Serial.println(curDirection);
+    Serial.println();
+
+    Serial.printf("_mCurPosValue: %ld\r\n", _mCurPosValue);
+    Serial.printf("_old_position1: %ld\r\n", _old_position);
+
+  }
+  aLastState = aState;  
+
+}
+
